@@ -1,0 +1,264 @@
+
+db.collection_name.insert(document)
+..............
+
+Insert two documents, update the title of one document, and remove that document later.
+
+db.post.insert([
+  {
+     title: 'MongoDB Overview', 
+     description: 'MongoDB is no sql database',
+     by: 'ABC',
+          likes: 100
+  },
+    
+  {
+     title: 'NoSQL Database', 
+     description: 'NoSQL database does not have tables',
+     by: 'ABC',
+         likes: 20, 
+     comments: [    
+        {
+           user:'user1',
+           message: 'very interested'
+                 }
+     ]
+  }
+])
+
+db.post.find()
+
+db.post.update({'title': 'MongoDB Overview'},
+{$set: {'title': 'MongoDB for Developers'}})
+
+db.post.find()
+
+db.post.remove({"title" : "MongoDB for Developers"})            //remove the document that has this title.
+
+db.post.find()
+...............
+
+Remove is similar to truncate in SQL.
+
+Limit and Sort
+
+db.post.find().limit(1)        //limit to see only n documents in the collection
+db.post.find().sort({"title":-1})        //-1 is for descending order of title information so N then M inside title below. And 1 for ascending order of title. 
+
+Result:
+{ 
+   "_id" : ObjectId("56c749631ba860729cdafc50"), 
+   "title" : "NoSQL Database", 
+   "description" : "NoSQL database does not have tables", 
+   "by" : "Intellipaat", 
+   "likes" : 20.0, 
+   "comments" : [
+       {
+           "user" : "user1", 
+           "message" : "very interested"
+       }
+   ]
+}
+{ 
+   "_id" : ObjectId("56c830e09db6c6750f38da7f"), 
+   "title" : "MongoDB for Developers", 
+   "description" : "MongoDB is no sql database", 
+   "by" : "Intellipaat", 
+   "likes" : 100.0
+}
+...................................................................................................
+
+$set is used 
+to update, modify, replace information
+to reach in and change embedded documents 
+to change the data type
+$-modifier for adding, changing or removing any keys. 
+
+.................
+$inc (increment) modifier to change value of an existing key or to create a new key if it does not exist. Applies only to integer, float and double to increment whenever numbers are changing: votes, scores, any kind of counts etc. 
+
+A : (apples, bananas, oranges, pears)
+$push: adds elements to the end of array if it exists or it creates a new one if one does not exist. 
+
+db.game.insert({"game" : "baseball", "player" : "Frank"})
+db.game.find()
+db.game.update({"game" : "baseball", "player" : "Frank"}, 
+    {"$inc" : {"score" : 100}})
+db.game.update({"game" : "baseball", "player" : "Frank"}, 
+    {"$inc" : {"score" : 500}})
+db.game.find()
+db.game.update({"game" : "baseball"},
+    {"$push" : {"press_comments" : 
+     {"News1" : "Excellent play", "News2" : "Extraordinary", 
+       "Channelz" : "ecstatic performance"}}})
+      
+db.game.update({"game" : "baseball"},
+    {"$push" : {"years_played" : 
+          {"2011" : "Season 2", "2014" : "Season 4", 
+       "2015" : "Season 1"}}})
+db.game.find()
+
+...Result
+{ 
+   "_id" : ObjectId("56c8435052b33a07923d6f29"), 
+   "game" : "baseball", 
+   "player" : "Frank", 
+   "score" : 600.0, 
+   "press_comments" : [
+       {
+           "News1" : "Excellent play", 
+           "News2" : "Extraordinary", 
+           "Channelz" : "ecstatic performance"
+       }
+   ], 
+   "years_played" : [
+       {
+           "2011" : "Season 2", 
+           "2014" : "Season 4", 
+           "2015" : "Season 1"
+       }
+   ]
+}
+.............
+$slice modifier. 
+
+db.game.find({"indoor" : "chess"},
+{"$push" : {"top10players" : {
+"$each" : ["Vishwanathan Anand", "Gary Kasparov"],
+"$slice" : -10}}})
+
+You cannot slice an array with a push so you have to include $each modifier everytime. 
+
+$pull: Remove elements based on a certain criteria from an array. 
+(pop, key : 1) end of array
+-1: from beginning of array
+
+[2,2,3,2]
+$pull for 2, then only [3] remains
+
+
+
+------------
+db.post.find()
+db.post.update({'title': 'MongoDB' Overview'},
+{$set: {'title': 'MongoDB for Developers'}})
+
+db.post.find()
+
+db.post.remove({"title" : "MongoDB for Developers"})
+
+db.post.insert({
+"title" : "MongoDB for Developers",
+"description"  : MonogDB  is no database",
+"by" : "Intellipaat",
+"likes" : 100.0
+} 
+)
+db.post.find().limit(1)
+db.post.find().sort{{"title",-1})
+  
+db.post.findOne({"likes" :100})  
+
+db.post.update({" id" : ObjectId("56c830e09db6c6750f38da7f"),
+{"$set" : {"shares" :200}})       
+
+------------------------------------
+
+
+db.game.insert({"game" : "baseball", "player" : "Frank"}) 
+db.game.find()
+db.game.update({"game" : "baseball", "player" : "Frank"}) 
+{"$inc" : {"score" : 100}})
+db.game.update({"game" : "baseball", "player" : "Frank"}) 
+{"$inc" : {"score" : 500}})
+
+db.game.update({"game" : "baseball", "player" : "Frank"},
+	{"$push" : {"press_comments" : 
+	{"News1" : "Excellent play", "News2" : "Extraordinary",
+	"Channelz" :  "ecstatic performance"}}})
+	 
+	db.game.update({"game" : "baseball", "player" : "Frank"},
+	{"$push" : {"years_played" : 
+	
+	{"2011" : "Season 2", "2014" : "Season 4",
+	"2015"  : "Season 1"}}})
+
+	db.game.find()
+	
+	db.lists.insert({"todo" : ["laundry","dry cleaing","shopping"]})
+	db.lists.find()
+	db.lists.update({},{"$pull" : {"todo" : laundry"}})
+	
+	}  	
+
+
+5.
+
+for(i=0; i<1000000;i++){
+
+db.users.insert(
+{
+"i"	:  i;
+
+"username" : "user"+i;
+"age" : Math.floor(Math.random()*120),
+"created" : new Date()
+}
+);
+}  
+db.users.find({username: "user20000"}).explain(true)
+
+db.users.find({username: "user20000"}).limit(1).explain(true) 
+
+
+db.users.ensureIndex({"username" : 1})
+db.users.find({username: "user	20000"}).explain(true)
+
+db.users.ensureIndex({"username" : 1})
+db.users.find({username20000"}).explain(true)
+
+
+db.scores.insert(
+{ "userid" : "newbie" }
+{ "userid" : "abby", "score" : 82}
+{ "userid" : "nina", "score" : 90} 
+]
+)
+
+db.scores.createIndex({score : 1}, {sparse : true})
+
+db.scores.find({score : {$1t:90)}})
+
+db.scores update(
+{ userid : "newbie"},
+{user id : "newbie",score:80}
+)
+db.scores.find() 
+db.scores.createIndex({score : 1}, {sparse : true,unique:true})
+
+ db.scores.drop()
+ db.score.insert(
+ [
+   {userid: "AAAAAAA", score: 43 },
+   {userid: "BBBBBBB", score: 34 },
+   {userid: "CCCCCCC"},
+   {userid: "DDDDDDD"}
+ ]
+ )
+ db.scores.find()
+  
+db.scores.createIndex({score :1),{sparse :true,unique : true})
+db.scores.insert({userid: "AAAAAAA", score:43)
+
+db.scores.getIndexes()
+
+db.scores.dropIndex("score_1")
+ 
+ 
+
+
+ 
+
+
+
+
