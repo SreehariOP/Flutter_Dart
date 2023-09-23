@@ -1,0 +1,10 @@
+    <div class="select-block">
+        <app-dynamic-form fieldType="select" class="catgegorySelect" width="100" placeholder="Choose Category"
+            [(ngModel)]="selectedLeapCategory" (changeIP)="selectedLeapCategory = $event;onChangeCategory()"
+            [option]="leapcategory" optionLabel="name" optionValue="id"> </app-dynamic-form>
+        <select (change)="onChangeRole()" [(ngModel)]="selectedRole">
+            <option value='Role-based'>Choose Role</option>
+            <option *ngFor="let lr of leapRoles;" [value]="lr.name" [name]="lr.id" [hidden]="!lr.display">{{lr.name}}
+            </option>
+        </select> 
+    </div>
