@@ -1,0 +1,472 @@
+import { Component, OnInit } from '@angular/core';
+import { ConfigService } from 'src/app/shared/services/config.service';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { Router } from '@angular/router';
+import { HttpCancelService } from 'src/app/shared/services/httpcancel.service';
+import { Roles } from './../../../shared/model/common.model';
+import * as moment from 'moment';
+import { environment } from 'src/environments/environment';
+import { LoadingService } from './../../../shared/loading/loading.service';
+import { DomSanitizer } from '@angular/platform-browser';
+import { NotificationService } from 'src/app/shared/notification/notification.service';
+import { DialogService } from 'src/app/shared/dialog/dialog.service';
+import { LearningPathService } from '../learning-path.service';
+
+@Component({
+  selector: 'app-leap',
+  templateUrl: './leap.component.html',
+  styleUrls: ['./leap.component.scss']
+})
+export class LeapComponent implements OnInit {
+  team: string = null;
+  leapRoles: Array<any> = [];
+  fcData: Array<any> = [];
+  selectedRole: string = 'Role-based';
+  courseData: Array<any> = [];
+  academyCourses: Array<any> = [];
+  salesForceCourses: Array<any> = [];
+  serviceCommercial: Array<any> = [];
+  serviceOperations: Array<any> = [];
+  serviceDispatch: Array<any> = [];
+  treeData: Object = null;
+  showRolebased: boolean = false;
+  showIndroLeap: boolean = false;
+  showElearning: boolean = false;
+  selectedLeapCategory: any = null;
+  introCourse: Object = null;
+  env: any = null;
+  optionLabel: string = "name";
+  userPhotos: Array<any> = [];
+  trainingType: Object = {
+    mytraining: false,
+    myteam: false,
+    isManager: true,
+    initial: null
+  }
+  leapcategory: Array<any> = [];
+
+  totalUsers: Array<any> = [];
+  sapidSubscriber: Array<any> = [];
+  fetchingUser: boolean = true;
+  chartData: Array<any> = [];
+  userInitial: string = null;
+  // ['(Transactional Trained) Opportunity Owner', '(Transactional Trained) Business Manager'].includes(selectedRole)
+
+  constructor(public configService: ConfigService,
+    private sanitizer: DomSanitizer,
+    public router: Router,
+    private notificationService: NotificationService,
+    private dialogService: DialogService,
+    public learningPathService: LearningPathService,
+    public httpCancelService: HttpCancelService,
+    public loadingService: LoadingService) {
+    this.env = environment.production;
+
+    this.configService.getRoles((data: Array<Roles>) => {
+      if (data?.length) {
+        var idArr = [17, 18, 31, 38, 39, 57];
+        this.leapRoles = data.map((item) => {
+          return { ...item, display: false }
+        });
+        this.leapRoles = this.leapRoles.filter(item => !idArr.includes(item.id));
+        this.onChangeCategory();
+      }
+    });
+    this.leapcategory = this.configService['leapCategory'];
+  }
+
+  onChangeCategory() {
+    this.selectedRole = 'Role-based';
+    this.courseData = [];
+    this.introCourse = null;
+    this.showRolebased = false;
+    this.showIndroLeap = this.selectedLeapCategory === 'Service Commercial';
+    this.leapRoles = this.leapRoles.map(item => {
+      return {
+        ...item,
+        display: (item.academy.includes('8') || item.academy.includes(8)) &&
+        (item?.category?.split(',')?.includes(this.selectedLeapCategory))
+      }
+    })
+  }
+
+  ngOnInit() {
+    this.configService.graphAPIToken.subscribe(token => {
+      this.learningPathService.validateManager(); 
+    }) 
+    // this.onChangeInitial(this.configService.userinitial.toUpperCase());
+    if (!this.configService?.academycatalogueData.length) {
+      this.configService.getData(`findcourses?usertype=${this.configService.userType?.toLowerCase()}`).subscribe((results: Array<any>) => {
+        this.academyCourses = results.filter((item) => {
+          return this.validateCourse(item)
+        })
+      this.wrapSalesCourses();
+      })
+    } else {
+      this.academyCourses = this.configService?.academycatalogueData.filter((item) => {
+        return this.validateCourse(item)
+      });
+      this.wrapSalesCourses();
+    }
+  }
+
+  ngDoCheck(): void {
+    if (this.fetchingUser && (this.sapidSubscriber.filter(item => item.closed).length === this.sapidSubscriber.length || !this.sapidSubscriber.length) &&
+    this.learningPathService.managerAccess != 'loading') {
+      console.log(this.sapidSubscriber);
+      this.fetchingUser = false;
+      !this.sapidSubscriber.length && this.loadingService.hideLoadingIndicator();
+      console.log(this.totalUsers, "Total User");
+      this.totalUsers.length && this.getLearningInfo(this.totalUsers.map(item => item.sapid));
+    }
+  }
+
+  getLearningInfo(ids) {
+    this.configService.getData(`Learning_History/list/${ids}`).subscribe((res) => {
+      console.log("Learnings", res);
+      this.loadingService.hideLoadingIndicator();
+      console.log(this.totalUsers)
+      this.totalUsers = this.totalUsers.map(user => {
+        let learnings = {
+          history: null
+        }
+        const idIndex = res.findIndex(x => x.sapid === user.sapid);
+        if (idIndex > -1) {
+          learnings['history'] = res[idIndex]['history'];
+        }
+        return {
+          ...user,
+          learnings
+        }
+      });
+      const users = this.totalUsers.reduce((arr, item) => {
+        item['learnings']['history'] = item['learnings']['history']?.map(hist => { return { ...hist, initials: item.initials } });
+
+        return [...arr, ...(item['learnings']['history'] || [])]
+      }, []);
+      this.academyCourses = this.academyCourses.map(item => {
+        const usersList = users.filter(x => item['course_id'].includes(x?.componentID));
+
+        //Remove Duplicates
+        let uniqueUsers = [];
+        usersList.forEach((user) => {
+          if (uniqueUsers.findIndex(c => c.initials === user.initials) === -1) {
+            uniqueUsers.push(user);
+          }
+        });
+
+        item['learnings'] = ids.length > 1 ? uniqueUsers : [];
+        const selfIndex = uniqueUsers.findIndex(x => x.initials.toUpperCase() === this.userInitial.toUpperCase());
+        item['learningCount'] = selfIndex > -1 ? item['learnings'].length - 1 : item['learnings'].length;
+        item['self'] = selfIndex > -1 ?
+
+          `${this.userInitial.toUpperCase()} is Completed on <br> ${moment(uniqueUsers[selfIndex]['completionDate']).format('MMM Do YYYY')}`
+          : null;
+        return item;
+      })
+      this.wrapSalesCourses();
+      this.onChangeRole();
+    },
+      err => {
+        console.log(err);
+      })
+  }
+
+  onChangeIP(initial) {
+    this.academyCourses = this.academyCourses.map(item => {
+      item['learnings'] = [];
+      item['learningCount'] = 0;
+      item['self'] = null;
+      return item;
+    });
+    this.wrapSalesCourses();
+    this.onChangeRole();
+    this.userInitial = initial;
+    this.totalUsers = [];
+    this.onChangeInitial(this.userInitial, -1);
+  }
+
+  onChangeInitial(initial, index = 0) {
+    this.loadingService.showLoadingIndicator();
+    this.fetchingUser = true;
+    this.sapidSubscriber[index] = this.configService.getData('getsapids', 'serviceAcademyUrl', {
+      type: index > -1 ? 'manager' : 'individual', initials: initial
+    }).subscribe(res => {
+      if (!res.length && this.userInitial === initial)
+        this.loadingService.hideLoadingIndicator();
+      if (index === -1) {
+        this.totalUsers.push(res[0]);
+        this.onChangeInitial(initial, index + 1);
+      } else {
+        res?.length && res.forEach((item) => {
+          this.totalUsers.push(item);
+          this.onChangeInitial(item.initials, index + 1);
+        });
+      }
+    }, err => {
+      console.log(err);
+    });
+  }
+
+  validateCourse(item) {
+    return item.c_active &&
+      item.c_serviceacademy.includes("8") &&
+      item.c_group !== 'Part Sales - 2: Quote Request from Shop Vestas'  
+      // item.c_level !== 'U1: Sales Management' 
+  }
+
+  wrapSalesCourses() {
+    console.log(this.academyCourses)
+    const leapCourse = this.configService.wrapTechnicalData(this.academyCourses);
+    const courseIndex = this.getLevelIndex('Introduction', 'clevel');
+    if (courseIndex > -1) {
+      const subcourseInd = this.getLevelIndex(courseIndex, 'sub', 'Introduction to Salesforce');
+      this.salesForceCourses = subcourseInd > -1 ? leapCourse[courseIndex]['value'][subcourseInd]['list']: [];
+    } 
+    this.serviceCommercial = this.academyCourses.filter(item => {
+      return item.c_group === 'Intro to LEAP Service Commercial' && item['course_id'] !== '803200'
+    }).sort((a, b) => a.index - b.index)
+
+    this.serviceOperations = this.academyCourses.filter(item => {
+      return item.c_group === 'Intro to Leap Service Operations'
+    }).sort((a, b) => a.index - b.index)
+
+    this.serviceDispatch = this.academyCourses.filter(item => {
+    return (item.c_group === 'Intro to Leap Service Operations' || item.c_group === 'Decoupling' || item.c_group === 'Service Product Hierarchy')
+    }).sort((a, b) => a.index - b.index)
+
+    console.log(this.serviceOperations)
+  }
+
+  getLevelIndex(level, type, category?) {
+    const leapCourse = this.configService.wrapTechnicalData(this.academyCourses);
+    return type === 'clevel' ? leapCourse.findIndex(x => x.course === level): leapCourse[level]['value'].findIndex(x => x.subcourse === category);
+  }
+
+  print() {
+    window.print();  
+  }
+
+  onChangeRole() {
+    const instructorLed = ['(Transactional Trained) Opportunity Owner', '(Transactional Trained) Business Manager'];
+    this.showIndroLeap = ['Account Owner', 'Contractual Opportunity Owner', 'Business Manager', 'Contractual CPQ Opportunity Approver', 'Service Contract Administrator', 'Contractual CPQ Opportunity Owner'].includes(this.selectedRole) ||
+                         this.selectedLeapCategory == 'Service Commercial';
+    this.showRolebased = this.selectedLeapCategory == 'Service Commercial - Contractual' && instructorLed.includes(this.selectedRole) || this.selectedLeapCategory == 'Service Operations';
+    this.showElearning = !['(Transactional Trained) Account Owner', '(Transactional Trained) Opportunity Owner', '(Transactional Trained) Business Manager', 'Technicians - FSL Mobile', 'Technicians - FSL Web'].includes(this.selectedRole) || ['Sales Force Admin', 'Operators Level 1', 'Operators Level 2', 'Technical Support Engineer', 'Data Associate'].includes(this.selectedRole);
+    this.introCourse = null;
+    this.courseData = [];
+    if (this.selectedRole === 'Role-based') {
+      this.courseData = [];
+      return;
+    }     
+    const role = JSON.stringify(this.leapRoles[this.leapRoles.findIndex(x => x.name === this.selectedRole)].id);
+    this.wrapIntroCourse();
+    this.courseData = this.configService.wrapTechnicalData(this.academyCourses.filter((item) => {
+      const roleIndex = item.c_leaprolebasedtrail.findIndex(x => x.role === role && x.isMandatory)
+      return roleIndex > -1 &&
+        !['Instructor-led', 'Introduction'].includes(item.c_level) &&
+        item.c_leapcategory.includes(this.selectedLeapCategory)
+
+    }), false, false, false)
+    // console.log(this.courseData)
+     
+  }
+
+  wrapIntroCourse() {
+    const roleIndex = this.leapRoles.findIndex(x => x.name == this.selectedRole);
+    if (roleIndex == -1) return;
+    // const group =  ['Service Commercial', 'Service Commercial - Transactional'].includes(this.selectedLeapCategory)  ? "commercial" : this.selectedLeapCategory;
+    const u1role = ['(Transactional Trained) Business Manager', '(Transactional Trained) Opportunity Owner'].includes(this.selectedRole);
+    const cIndex = this.academyCourses.findIndex(x => x.c_leapcategory.includes(this.selectedLeapCategory) &&
+      x.c_roles.map(item => { return item.toString()}).includes(JSON.stringify(this.leapRoles[roleIndex]['id'])) &&
+      (u1role ? x.c_group === 'Opportunity Management U1.5: Contractual' : ['Service Commercial', 'Service Commercial - Contractual'].includes(this.selectedLeapCategory) ? x.c_leaprolebasedcourse : x.c_group === this.selectedLeapCategory) &&
+      (u1role ? x.c_level === 'U1: Sales Management' : x.c_level === 'Instructor-led'));
+    if (cIndex > -1) this.introCourse = this.academyCourses[cIndex]
+  }
+
+  navigateCourse() {
+    if(this.introCourse)
+      this.router.navigate(['/searchdetail'], { queryParams: { id: this.introCourse['_id'] } });
+  }
+
+  makePdf() {
+    var data = document.getElementById('wrapper');
+    document.getElementById('pdfInfo')['style'].display = 'flex';
+    html2canvas(data).then(canvas => {
+      var imgWidth = 295;
+      var imgHeight = canvas.height * imgWidth / canvas.width;
+  
+      const contentDataURL = canvas.toDataURL('image/jpeg', 0.9)
+      let pdf = new jsPDF('p', 'mm', 'a3'); // A3 size page of PDF  
+      var position = 0;
+      pdf.addImage(contentDataURL, 'JPEG', 0, position, imgWidth, imgHeight)
+        pdf.save('LEAP_RoleBased.pdf'); // Generated PDF  
+        document.getElementById('pdfInfo')['style'].display = 'none';
+    });
+  }
+
+  sortList(list) {
+    return list?.length ? list.sort((a, b) => a.index - b.index) : list;
+  } 
+  
+  reverseList(list) {
+    return list?.length ? list.slice().reverse() : list;
+  }
+  
+  onChangeTraining(isapid?) {
+    // this.trainingType['mytraining'] = event.checked;
+    
+    // if (!event.checked) return;
+    this.loadingService.showLoadingIndicator();
+    const sapid = isapid || this.configService.sapid;
+    this.configService.getData(`Learning_History/${sapid}`).subscribe(res => {
+      this.academyCourses = this.academyCourses.map(item => {
+        const index = res?.value?.findIndex(x => item?.course_id?.includes(x.componentID));
+        const status = {
+          [isapid ? 'istatus': 'mystatus']: index > -1,
+          [isapid ? 'icompletionDate' : 'completionDate']:
+            index > -1 ?
+            `${isapid ? this.trainingType['initial'].toUpperCase()+ ' is': ''} Completed on <br> ${moment(res.value[index]['completionDate']).format('MMM Do YYYY')}` :
+            null
+        }
+        return {
+          ...item,
+          mystatus: index > -1,
+          completionDate: index > -1 ?
+            `Completed on <br> ${moment(res.value[index]['completionDate']).format('MMM Do YYYY')}` :
+            null,
+            ...status
+        }
+      });
+      this.wrapSalesCourses();
+      this.onChangeRole();
+      this.loadingService.hideLoadingIndicator();
+    }, err => {
+      this.wrapSalesCourses();
+      this.onChangeRole();
+      this.loadingService.hideLoadingIndicator();
+    })
+  }
+
+  
+  onChangeList(event) {
+    this.loadingService.showLoadingIndicator();
+    console.log("Tree Comp", event);
+    this.treeData = JSON.parse(JSON.stringify(event));  
+    const userList = event.selectedList.map(item => {
+      return JSON.parse(item)
+    });
+
+    this.trainingType['myteam'] = userList.length;
+    
+    this.configService.getData(`Learning_History/list/${userList.map(item => {
+      return item.sapid
+    })}`)
+      .subscribe(res => {
+        console.log("schedule data", res);
+        const userData = this.setIntial(res, userList);
+
+        if (userData.length) {
+          this.academyCourses = this.academyCourses.map(item => {
+            let historyUser = [];
+            userData.forEach(data => {
+              const histIndex = data.history.findIndex(x => item?.course_id?.includes(x.componentID));
+              if (histIndex > -1) {
+                historyUser.push({
+                  initial: data.initial,
+                  completionDate: `Completed on <br> ${moment(data.history[histIndex]['completionDate']).format('MMM Do YYYY')}`
+                });
+              }
+            });
+            return {
+              ...item,
+              history: historyUser
+            }
+          });
+           this.wrapSalesCourses();
+           this.onChangeRole();
+          this.loadingService.hideLoadingIndicator();
+        } else this.loadingService.hideLoadingIndicator();
+      }, err => {
+        console.log(err);
+        this.academyCourses = this.academyCourses.map(item => {
+          return {
+            ...item,
+            history: []
+          }
+        })
+        this.wrapSalesCourses();
+        this.onChangeRole();
+        this.loadingService.hideLoadingIndicator();
+    })
+  }
+
+  setIntial(history, users) {
+    return history.map(item => {
+      const index = users.findIndex(x => x.sapid === item.sapid)
+      return {
+        ...item,
+        initial: users[index]['initials']
+      }
+    })
+  }
+
+  getPhotos(initial) {
+    this.userPhotos[initial] = 'loading';
+    this.configService.getProfileData(`https://graph.microsoft.com/v1.0/users/${initial}@vestas.com/photo/$value`)
+      .subscribe(res => {
+        console.log(res);
+        let unsafeImageUrl = URL.createObjectURL(res);
+        this.userPhotos[initial] = this.sanitizer.bypassSecurityTrustUrl(unsafeImageUrl);
+      }, err => {
+        this.userPhotos[initial] = null;
+      })
+  }
+
+  checkRole(event) {
+    this.trainingType['isManager'] = event.length;
+  }
+
+  openLearnings(course) {
+    this.dialogService.openDialog({
+      type: 'learningPath',
+      course: course,
+      totalUser: this.totalUsers,
+      userInitial: this.userInitial
+    })
+  }
+
+  getLearning(event) {
+    if(!event.checked){
+      this.academyCourses = this.academyCourses.map((item)=>{
+        return {
+          ...item,
+          myLearning : null
+        }
+      })
+      return
+    }
+    if(event.checked) {
+      this.loadingService.showLoadingIndicator();
+      const sapid = this.configService.sapid;
+      this.configService.getData(`Learning_History/list/${sapid}`)
+      .subscribe((data)=>{
+        this.academyCourses = this.academyCourses.map((item)=>{
+          const hindex = data?.[0]?.history?.findIndex(x => item?.course_id.includes(x.componentID));
+          return {
+            ...item,
+            myLearning : hindex > -1 ? 
+            `Completed on <br> ${moment(data[0].history[hindex]['completionDate']).format('MMM Do YYYY')}`: null
+          }
+        });
+        this.wrapSalesCourses();
+        this.onChangeRole();
+        this.loadingService.hideLoadingIndicator();
+      }, err => {
+        this.loadingService.hideLoadingIndicator();
+      })
+    }
+
+  }
+}
